@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Diskusi Global</title>
+    <title>Diskusi Global dengan Fitur Admin</title>
     <style>
         :root {
             --primary-color: #4361ee;
@@ -13,9 +13,9 @@
             --dark-color: #212529;
             --success-color: #4cc9f0;
             --warning-color: #f72585;
+            --danger-color: #dc3545;
             --admin-color: #ffeb3b;
             --system-color: #e0f7fa;
-            --danger-color: #dc3545;
             --border-radius: 8px;
             --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
@@ -283,12 +283,6 @@
             font-weight: bold;
         }
 
-        .message.deleted .message-content {
-            background-color: #f8d7da;
-            color: #721c24;
-            font-style: italic;
-        }
-
         .user-badge {
             font-size: 10px;
             background-color: var(--success-color);
@@ -301,6 +295,29 @@
 
         .admin-badge {
             background-color: var(--warning-color) !important;
+        }
+
+        .delete-btn {
+            position: absolute;
+            right: 0;
+            top: 0;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .message:hover .delete-btn {
+            opacity: 1;
         }
 
         .chat-input {
@@ -430,27 +447,13 @@
             margin-top: 10px;
         }
 
-        .delete-message-btn {
-            position: absolute;
-            right: 0;
-            top: 0;
-            background: var(--danger-color);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 10px;
+        .admin-panel {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 1000;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .message:hover .delete-message-btn {
-            opacity: 1;
+            gap: 10px;
         }
 
         @media (max-width: 768px) {
@@ -540,7 +543,7 @@
         <div class="admin-login-content">
             <h3>Login Admin</h3>
             <div class="form-group">
-                <input type="password" id="adminPasswordInput" placeholder="Masukkan password admin" class="form-control">
+                <input type="password" id="adminPasswordInput" placeholder="Masukkan password admin">
             </div>
             <div class="admin-attempts" id="adminAttemptsText"></div>
             <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
@@ -583,7 +586,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-        import { getDatabase, ref, push, onValue, set, onDisconnect, serverTimestamp, get, child, remove, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+        import { getDatabase, ref, push, onValue, set, onDisconnect, serverTimestamp, get, child, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
         // Konfigurasi Firebase Anda
         const firebaseConfig = {
@@ -605,6 +608,7 @@
         const messagesRef = ref(database, 'messages');
         const usersRef = ref(database, 'users');
         const presenceRef = ref(database, 'presence');
+        const adminsRef = ref(database, 'admins');
         
         // Konstanta Admin
         const ADMIN_PASSWORD = "1933"; // Password admin
@@ -744,12 +748,7 @@
             // Buat panel admin baru
             const adminPanel = document.createElement('div');
             adminPanel.id = 'adminPanel';
-            adminPanel.style.position = 'fixed';
-            adminPanel.style.bottom = '80px';
-            adminPanel.style.right = '20px';
-            adminPanel.style.zIndex = '1000';
-            adminPanel.style.display = 'flex';
-            adminPanel.style.gap = '10px';
+            adminPanel.className = 'admin-panel';
 
             // Tombol broadcast message
             const broadcastBtn = document.createElement('button');
@@ -775,9 +774,25 @@
             // Tambahkan pesan selamat datang admin
             const adminWelcomeMsg = createSystemMessage(
                 "ADMIN: Anda sekarang memiliki akses penuh. " +
-                "Gunakan tombol hapus pada pesan untuk menghapus konten tidak pantas."
+                "Klik tombol × di pojok kanan pesan untuk menghapus konten tidak pantas."
             );
             chatMessages.appendChild(adminWelcomeMsg);
+        }
+
+        // Hapus pesan permanen
+        function deleteMessage(messageId) {
+            if (!currentUser.isAdmin) return;
+            
+            if (confirm("Hapus permanen pesan ini?")) {
+                remove(child(messagesRef, messageId))
+                    .then(() => {
+                        showNotification('Pesan dihapus permanen');
+                    })
+                    .catch((error) => {
+                        showNotification('Gagal menghapus pesan');
+                        console.error("Error removing message: ", error);
+                    });
+            }
         }
 
         // Tampilkan profil pengguna
@@ -805,23 +820,6 @@
             });
         }
 
-        // Hapus pesan tidak pantas
-        function deleteMessage(messageId, messageContent) {
-            if (!currentUser.isAdmin) return;
-            
-            if (confirm(`Hapus pesan ini?\n"${messageContent}"`)) {
-                // Tandai sebagai dihapus alih-alih menghapus sepenuhnya
-                update(child(messagesRef, messageId), {
-                    content: "[Pesan ini telah dihapus oleh admin]",
-                    isDeleted: true,
-                    deletedBy: currentUser.username,
-                    deletedAt: serverTimestamp()
-                }).then(() => {
-                    showNotification('Pesan telah dihapus');
-                });
-            }
-        }
-
         // Kirim pesan
         function sendMessage() {
             const content = messageInput.value.trim();
@@ -846,7 +844,7 @@
                 
                 // Tambahkan pesan system default
                 const welcomeMsg = createSystemMessage(
-                    "Selamat datang di Diskusi Global! Siapa saja bisa mengirim pesan tapi harap dipatuhi."
+                    "Selamat datang di Diskusi Global! Siapa saja bisa mengirim pesan."
                 );
                 chatMessages.appendChild(welcomeMsg);
 
@@ -870,19 +868,15 @@
                     if (msg.isAdmin) messageClass += ' admin';
                     if (msg.userId === currentUser.id) messageClass += ' own';
                     if (msg.isSystem) messageClass += ' system';
-                    if (msg.isDeleted) messageClass += ' deleted';
                     
                     messageElement.className = messageClass;
                     
                     const time = msg.timestamp ? new Date(msg.timestamp) : new Date();
                     const timeString = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     
-                    // Tambahkan tombol hapus untuk admin
-                    const deleteBtn = currentUser.isAdmin && !msg.isSystem && !msg.isDeleted ? 
-                        `<button class="delete-message-btn" data-messageid="${msg.key}">×</button>` : '';
-                    
                     messageElement.innerHTML = `
-                        ${deleteBtn}
+                        ${currentUser.isAdmin && !msg.isSystem ? 
+                            `<button class="delete-btn" data-id="${msg.key}">×</button>` : ''}
                         <div class="message-info">
                             <span class="message-user" data-userid="${msg.userId}">${msg.username}
                                 ${msg.isAdmin ? '<span class="user-badge admin-badge">ADMIN</span>' : ''}
@@ -891,7 +885,6 @@
                         </div>
                         <div class="message-content">
                             ${msg.content}
-                            ${msg.isDeleted ? '<div style="font-size:0.8em;color:#dc3545;">Dihapus oleh: '+(msg.deletedBy || 'admin')+'</div>' : ''}
                         </div>
                     `;
                     
@@ -910,12 +903,10 @@
                 });
 
                 // Tambahkan event listener untuk tombol hapus
-                document.querySelectorAll('.delete-message-btn').forEach(btn => {
+                document.querySelectorAll('.delete-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const messageId = btn.getAttribute('data-messageid');
-                        const messageContent = btn.parentElement.querySelector('.message-content').textContent.trim();
-                        deleteMessage(messageId, messageContent);
+                        deleteMessage(btn.getAttribute('data-id'));
                     });
                 });
             });
@@ -986,6 +977,9 @@
                 currentUser.isAdmin = true;
                 set(child(usersRef, currentUser.id), currentUser);
                 localStorage.setItem('userProfile', JSON.stringify(currentUser));
+                
+                // Tambahkan user ke daftar admin
+                set(child(adminsRef, currentUser.id), true);
                 
                 showNotification('Login admin berhasil!');
                 adminLoginPopup.style.display = 'none';
